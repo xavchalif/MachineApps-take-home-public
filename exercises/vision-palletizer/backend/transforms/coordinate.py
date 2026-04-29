@@ -67,7 +67,10 @@ def robot_to_camera(point_robot: np.ndarray) -> np.ndarray:
     return rotation.T @ (point - CAMERA_TRANSLATION_MM)
 
 
-def build_homogeneous_transform(rotation: np.ndarray, translation: np.ndarray) -> np.ndarray:
+def build_homogeneous_transform(
+    rotation: np.ndarray,
+    translation: np.ndarray,
+) -> np.ndarray:
     """
     Build a 4x4 homogeneous transformation matrix.
     

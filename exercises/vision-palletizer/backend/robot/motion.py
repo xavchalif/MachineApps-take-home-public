@@ -130,7 +130,7 @@ class MotionController:
         self._gripper_closed = True
         print("[MOCK] Gripper closed")
         return True
-
+    
     def _move_linear(
         self,
         pose: list[float],

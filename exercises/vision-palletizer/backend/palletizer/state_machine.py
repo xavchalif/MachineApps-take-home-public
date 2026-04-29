@@ -212,7 +212,7 @@ class PalletizerStateMachine(StateMachine):
             return True
         except Exception:
             return False
-
+    
     # State Entry Callbacks - Implement your business logic here
     
     @on_enter_state(States.running.homing)
