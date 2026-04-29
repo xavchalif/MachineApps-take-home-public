@@ -2,6 +2,7 @@
 Palletizer State Machine
 
 Manages the lifecycle of palletizing operations using vention-state-machine.
+Documentation: https://docs.vention.io/docs/state-machine
 """
 
 from enum import Enum, auto
@@ -21,6 +22,7 @@ from transforms.coordinate import camera_to_robot
 
 
 class PalletizerState(Enum):
+    """Palletizer operation states."""
     IDLE = auto()
     HOMING = auto()
     PICKING = auto()
@@ -29,6 +31,7 @@ class PalletizerState(Enum):
 
 
 class Running(StateGroup):
+    """Active operation states."""
     homing: State = State()
     picking: State = State()
     placing: State = State()
@@ -39,6 +42,7 @@ class States:
 
 
 class Triggers:
+    """Named events that initiate transitions."""
     finished_homing = Trigger("finished_homing")
     finished_picking = Trigger("finished_picking")
     finished_placing = Trigger("finished_placing")
@@ -60,6 +64,7 @@ TRANSITIONS = [
 
 @dataclass
 class PalletizerContext:
+    """Shared context for state machine operations."""
     rows: int = 2
     cols: int = 2
     box_size_mm: tuple[float, float, float] = (100.0, 100.0, 50.0)
@@ -75,8 +80,14 @@ class PalletizerContext:
 
 
 class PalletizerStateMachine(StateMachine):
-    """State machine for palletizing operations."""
-
+    """
+    State machine for palletizing operations.
+    
+    Usage:
+        machine = PalletizerStateMachine()
+        machine.trigger('start')  # Transitions to HOMING
+    """
+    
     def __init__(self, motion_controller=None, detections_path: Optional[str] = None):
         super().__init__(
             states=States,
@@ -89,6 +100,8 @@ class PalletizerStateMachine(StateMachine):
 
     @property
     def current_state(self) -> PalletizerState:
+        """Get current state. Note: library uses format 'Running_homing' not 'running.homing'."""
+        state_str = self.state
         mapping = {
             "ready": PalletizerState.IDLE,
             "fault": PalletizerState.FAULT,
@@ -96,17 +109,18 @@ class PalletizerStateMachine(StateMachine):
             "Running_picking": PalletizerState.PICKING,
             "Running_placing": PalletizerState.PLACING,
         }
-        return mapping.get(self.state, PalletizerState.IDLE)
+        return mapping.get(state_str, PalletizerState.IDLE)
 
     @property
     def progress(self) -> dict:
+        """Get current progress: state, current_box, total_boxes, error."""
         return {
             "state": self.current_state.name,
             "current_box": self.context.current_box_index,
             "total_boxes": self.context.total_boxes,
-            "error": self.context.error_message or None,
+            "error": self.context.error_message if self.context.error_message else None,
         }
-
+    
     def configure(
         self,
         rows: int,
@@ -115,6 +129,7 @@ class PalletizerStateMachine(StateMachine):
         pallet_origin_mm: tuple[float, float, float],
         spacing_mm: float = 10.0,
     ) -> bool:
+        """Configure palletizing parameters. Only valid in IDLE state."""
         if self.current_state != PalletizerState.IDLE:
             return False
         try:
@@ -144,6 +159,7 @@ class PalletizerStateMachine(StateMachine):
         })
 
     def begin(self) -> bool:
+        """Start the palletizing sequence."""
         if self.current_state != PalletizerState.IDLE:
             return False
         if not self.context.place_positions:
@@ -169,6 +185,7 @@ class PalletizerStateMachine(StateMachine):
             return False
 
     def stop(self) -> bool:
+        """Stop the palletizing sequence and return to IDLE."""
         if self.current_state == PalletizerState.IDLE:
             return True
         try:
@@ -178,6 +195,7 @@ class PalletizerStateMachine(StateMachine):
             return False
 
     def reset(self) -> bool:
+        """Reset from FAULT state to IDLE."""
         try:
             self.trigger(BaseTriggers.RESET.value)
             self.context.error_message = ""
@@ -187,6 +205,7 @@ class PalletizerStateMachine(StateMachine):
             return False
 
     def fault(self, message: str) -> bool:
+        """Transition to FAULT state with an error message."""
         self.context.error_message = message
         try:
             self.trigger(BaseTriggers.TO_FAULT.value)
@@ -194,6 +213,8 @@ class PalletizerStateMachine(StateMachine):
         except Exception:
             return False
 
+    # State Entry Callbacks - Implement your business logic here
+    
     @on_enter_state(States.running.homing)
     def on_enter_homing(self, _):
         try:
@@ -245,6 +266,7 @@ class PalletizerStateMachine(StateMachine):
 
     @on_state_change
     def on_any_state_change(self, old_state: str, new_state: str, trigger: str):
+        """Called on every state transition. Useful for logging."""
         print(f"[STATE] {old_state} -> {new_state} via {trigger}")
 
     def _load_detections_from_file(self) -> None:

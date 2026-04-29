@@ -34,7 +34,6 @@ services:
     environment:
       - ROBOT_HOST=ursim
       - ROBOT_PORT=30004
-      - MOCK_ROBOT=true
     depends_on:
       ursim:
         condition: service_healthy

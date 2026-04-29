@@ -22,6 +22,9 @@ _robot_connection = RobotConnection()
 _motion_controller = MotionController(_robot_connection)
 palletizer = PalletizerStateMachine(motion_controller=_motion_controller)
 
+# ============================================================================
+# Request/Response Models
+# ============================================================================
 
 class PalletConfig(BaseModel):
     """Configuration for palletizing operation."""
@@ -72,6 +75,8 @@ class VisionDetection(BaseModel):
 
 
 class StatusResponse(BaseModel):
+    """Palletizer status response."""
+    
     state: str = Field(..., description="Current state machine state")
     current_box: int = Field(..., description="Current box index (0-based)")
     total_boxes: int = Field(..., description="Total boxes to palletize")
@@ -79,19 +84,31 @@ class StatusResponse(BaseModel):
 
 
 class ConfigResponse(BaseModel):
+    """Configuration response."""
+    
     success: bool
     message: str
     grid_size: Optional[str] = None
 
 
 class CommandResponse(BaseModel):
+    """Generic command response."""
+    
     success: bool
     message: str
 
+# ============================================================================
+# API Endpoints
+# ============================================================================
 
 @router.post("/configure", response_model=ConfigResponse)
 async def configure_palletizer(config: PalletConfig):
-    """Configure grid dimensions, box size, spacing, and pallet origin."""
+    """
+    Configure the palletizing operation.
+    
+    Sets up the grid dimensions, box size, and pallet origin.
+    Can only be called when the palletizer is in IDLE state.
+    """
     ok = palletizer.configure(
         rows=config.rows,
         cols=config.cols,
@@ -110,7 +127,11 @@ async def configure_palletizer(config: PalletConfig):
 
 @router.post("/start", response_model=CommandResponse)
 async def start_palletizer():
-    """Start the palletizing sequence."""
+    """
+    Start the palletizing sequence.
+    
+    Begins the pick-and-place cycle. The palletizer must be configured first.
+    """
     ok = palletizer.begin()
     if not ok:
         raise HTTPException(status_code=409, detail=palletizer.context.error_message or "Unable to start palletizer")
@@ -119,7 +140,11 @@ async def start_palletizer():
 
 @router.post("/stop", response_model=CommandResponse)
 async def stop_palletizer():
-    """Gracefully stop operation and return to IDLE."""
+    """
+    Stop the palletizing sequence.
+    
+    Gracefully stops the operation and returns to IDLE state.
+    """
     ok = palletizer.stop()
     if not ok:
         raise HTTPException(status_code=409, detail="Unable to stop from current state")
@@ -128,7 +153,11 @@ async def stop_palletizer():
 
 @router.post("/reset", response_model=CommandResponse)
 async def reset_palletizer():
-    """Reset from FAULT state."""
+    """
+    Reset from FAULT state.
+    
+    Clears the fault and returns to IDLE state.
+    """
     ok = palletizer.reset()
     if not ok:
         raise HTTPException(status_code=409, detail="Unable to reset from current state")
@@ -137,13 +166,25 @@ async def reset_palletizer():
 
 @router.get("/status", response_model=StatusResponse)
 async def get_status():
-    """Return current state, progress, and any error."""
+    """
+    Get current palletizer status.
+    
+    Returns the current state, progress, and any error messages.
+    """
     return StatusResponse(**palletizer.progress)
 
 
 @router.post("/vision/detect", response_model=CommandResponse)
 async def simulate_vision_detection(detection: VisionDetection):
-    """Add a camera-frame detection to the queue for the next palletizing run."""
+    """
+    Simulate a vision detection event.
+    
+    In a real system, this would come from the vision system.
+    For this exercise, use this endpoint to simulate box detections.
+    
+    The coordinates are in the camera frame and must be transformed
+    to the robot frame before use.
+    """
     palletizer.add_detection(detection.x_mm, detection.y_mm, detection.z_mm, detection.yaw_deg or 0.0)
     robot_mm = camera_to_robot(np.array([detection.x_mm, detection.y_mm, detection.z_mm]))
     return CommandResponse(
@@ -154,7 +195,11 @@ async def simulate_vision_detection(detection: VisionDetection):
 
 @router.get("/debug/positions")
 async def get_calculated_positions():
-    """Return calculated place positions for debugging."""
+    """
+    Debug endpoint: Get all calculated place positions.
+    
+    Useful for verifying grid calculations without running the full sequence.
+    """
     if not palletizer.context.place_positions:
         palletizer.context.place_positions = calculate_place_positions(
             palletizer.context.rows,
@@ -168,7 +213,12 @@ async def get_calculated_positions():
 
 @router.post("/debug/transform")
 async def test_transform(detection: VisionDetection):
-    """Transform a camera-frame point to robot base frame for verification."""
+    """
+    Debug endpoint: Test coordinate transformation.
+    
+    Transforms the input coordinates and returns both camera and robot frame values.
+    Useful for verifying transformation math.
+    """
     camera_mm = np.array([detection.x_mm, detection.y_mm, detection.z_mm], dtype=float)
     robot_mm = camera_to_robot(camera_mm)
     return {
